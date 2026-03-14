@@ -31,11 +31,11 @@ export default function AllUser() {
                 </div>
             </header>
 
-            <div className="bg-white dark:bg-slate-900 border rounded-xl overflow-hidden">
+            <div className="bg-white dark:bg-slate-900  rounded-xl overflow-hidden">
                 {loading ? <div className="p-20 text-center"><Loader2 className="animate-spin mx-auto" /></div> : (
                     <>
                         <DataTable columns={columns} data={paginatedUsers} rowKey="id" />
-                        <div className="p-4 flex justify-between items-center border-t">
+                        <div className="p-4 flex justify-between items-center">
                             <span className="text-[10px] font-black text-slate-400 uppercase">Page {currentPage} of {totalPages}</span>
                             <div className="flex gap-2">
                                 <button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1} className="p-2 border rounded-xl"><ChevronLeft size={18}/></button>

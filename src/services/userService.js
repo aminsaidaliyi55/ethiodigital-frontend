@@ -14,6 +14,17 @@ export const getUsers = async () => {
     }
 };
 
+export const getCouriers = async () => {
+    try {
+        // Replace with your actual backend URL
+        const response = await axios.get("/api/couriers");
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching couriers:", error);
+        throw error;
+    }
+};
+
 export const getAllUsers = getUsers;
 
 export const getSupportStaff = async () => {

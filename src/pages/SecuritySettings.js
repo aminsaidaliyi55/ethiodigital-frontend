@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Fingerprint, ShieldCheck, Loader2, AlertCircle } from "lucide-react";
-import { registerFingerprint } from "./authService"; // Adjust path as needed
+import { registerFingerprint } from "@/services/authService"; // Adjust path as needed
 
 function SecuritySettings() {
     const [status, setStatus] = useState("idle"); // idle, loading, success, error

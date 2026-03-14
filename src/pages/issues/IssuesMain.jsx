@@ -1,40 +1,47 @@
 import React, { useState } from "react";
-import IssuesList from "./IssuesList";
-import AdminAction from "./AdminAction";
-import ReportIssue from "./ReportIssue"; // Import the new component
+import RouteList from "./RouteList";
+import RouteDetail from "./RouteDetail";
+import AddRoute from "./AddRoute";
 
-const IssuesMain = ({ filter }) => {
-    const [view, setView] = useState("list"); // 'list', 'action', or 'report'
-    const [selectedIssue, setSelectedIssue] = useState(null);
+const RoutesMain = ({ filter }) => {
+    // We use 'view' to switch between the list, seeing details, or adding a new one
+    const [view, setView] = useState("list");
+    const [selectedRoute, setSelectedRoute] = useState(null);
 
     return (
         <div className="w-full">
+            {/* 1. Show the list of all routes */}
             {view === "list" && (
-                <IssuesList
+                <RouteList
                     filter={filter}
-                    onViewDetails={(issue) => {
-                        setSelectedIssue(issue);
-                        setView("action");
+                    onViewDetails={(route) => {
+                        setSelectedRoute(route);
+                        setView("details"); // Show the specific route details
                     }}
-                    onReportNew={() => setView("report")} // Pass this to IssuesList button
+                    onAddNew={() => setView("add")} // Show the form to add a new route
                 />
             )}
 
-            {view === "action" && (
-                <AdminAction
-                    issue={selectedIssue}
+            {/* 2. Show details for a specific route (like distance, stops, or driver) */}
+            {view === "details" && (
+                <RouteDetail
+                    route={selectedRoute}
                     onBack={() => setView("list")}
                 />
             )}
 
-            {view === "report" && (
-                <ReportIssue
+            {/* 3. Show the form to create a new delivery route */}
+            {view === "add" && (
+                <AddRoute
                     onBack={() => setView("list")}
-                    onSuccess={() => setView("list")}
+                    onSuccess={() => {
+                        // After successfully adding, go back to the list
+                        setView("list");
+                    }}
                 />
             )}
         </div>
     );
 };
 
-export default IssuesMain;
+export default RoutesMain;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Search, Plus, Loader2, Trash2, Eye, Edit3 } from "lucide-react";
+import { Search, Plus, Loader2, Trash2, Eye, Edit, Truck, MapPin } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import api from "../../axios";
 import { clientService } from "@/services/clientService";
@@ -7,15 +7,21 @@ import DataTable from "@/components/DataTable";
 import ShopViewModal from "./ShopViewModal";
 import ShopFormModal from "./ShopFormModal";
 
-const ClientDirectory = () => {
+const ClientDirectory = ({ filter = "all" }) => {
     const [clients, setClients] = useState([]);
-    const [availableDirectors, setAvailableDirectors] = useState([]);
+    const [availableUsers, setAvailableUsers] = useState([]); // Familiar word: Users
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showView, setShowView] = useState(false);
     const [showForm, setShowForm] = useState(false);
-    const [selected, setSelected] = useState(null);
-    const [filters, setFilters] = useState({ search: "" });
+    const [selectedItem, setSelectedItem] = useState(null); // Familiar word: Selected Item
+    const [searchQuery, setSearchQuery] = useState(""); // Simplified state
+
+    // Set labels based on the page type
+    const isCarrierMode = filter === "carriers";
+    const pageTitle = isCarrierMode ? "Delivery Drivers" : "Store List";
+    const itemLabel = isCarrierMode ? "Driver" : "Store";
+    const addButtonLabel = isCarrierMode ? "Add New Driver" : "Add New Store";
 
     const fetchData = async () => {
         try {
@@ -25,58 +31,85 @@ const ClientDirectory = () => {
                 api.get("/users"),
                 api.get("/categories")
             ]);
-            setClients(clientsRes);
-            setAvailableDirectors(usersRes.data || []);
-            setCategories(catRes.data || []);
+
+            const clientsData = Array.isArray(clientsRes) ? clientsRes : (clientsRes?.data || []);
+            const usersData = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+            const categoriesData = Array.isArray(catRes.data) ? catRes.data : (catRes.data?.data || []);
+
+            setClients(clientsData);
+            setAvailableUsers(usersData);
+            setCategories(categoriesData);
         } catch (err) {
-            toast.error("Database sync failed");
+            console.error("Error:", err);
+            toast.error("Could not load data");
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(); }, [filter]);
 
-    const handleSave = async (payload) => {
-        const isEdit = !!selected;
+    const handleSave = async (formData) => {
         try {
-            if (isEdit) {
-                await clientService.update(selected.id, payload);
-                toast.success("Shop Profile Updated");
+            // Auto-assign category if adding a driver
+            const finalData = isCarrierMode
+                ? { ...formData, category_id: categories.find(c => c.name.toLowerCase().includes('logistics'))?.id || formData.category_id }
+                : formData;
+
+            if (selectedItem) {
+                await clientService.update(selectedItem.id, finalData);
+                toast.success("Updated successfully");
             } else {
-                await clientService.fullShopSetup(payload);
-                toast.success("Deployment Successful");
+                await clientService.fullShopSetup(finalData);
+                toast.success("Added successfully");
             }
             setShowForm(false);
             fetchData();
         } catch (err) {
-            toast.error(err.response?.data?.message || "Operation failed");
+            toast.error("Something went wrong");
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if(window.confirm(`Are you sure you want to delete this ${itemLabel.toLowerCase()}?`)) {
+            try {
+                await clientService.delete(id);
+                toast.success("Deleted");
+                fetchData();
+            } catch (err) {
+                toast.error("Delete failed");
+            }
         }
     };
 
     const columns = [
         {
-            header: "Shop Detail",
+            header: `${itemLabel} Name`,
             render: (row) => (
                 <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-[#004A7C] dark:text-blue-400 uppercase">
-                        {row.name[0]}
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 flex items-center justify-center font-black text-blue-900 dark:text-blue-400 uppercase">
+                        {isCarrierMode ? <Truck size={18} /> : (row.name ? row.name[0] : "?")}
                     </div>
                     <div>
-                        <p className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">{row.name}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase">{row.category_name || "General"}</p>
+                        <p className="font-bold text-slate-800 dark:text-slate-100 text-[11px] uppercase">{row.name}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                            {row.category_name || "General"}
+                        </p>
                     </div>
                 </div>
             )
         },
-        { header: "Owner", accessor: "owner_name" },
+        {
+            header: isCarrierMode ? "Driver Name" : "Owner Name",
+            render: (row) => <span className="text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase">{row.owner_name}</span>
+        },
         {
             header: "Status",
             render: (row) => (
-                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${
                     row.status === 'active'
-                        ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                        ? 'bg-green-50 text-green-600'
+                        : 'bg-red-50 text-red-600'
                 }`}>
                     {row.status}
                 </span>
@@ -87,67 +120,73 @@ const ClientDirectory = () => {
             align: "right",
             render: (row) => (
                 <div className="flex justify-end gap-2">
-                    <ActionButton icon={<Eye size={16}/>} color="hover:text-blue-600 dark:hover:text-blue-400" onClick={() => { setSelected(row); setShowView(true); }} />
-                    <ActionButton icon={<Edit3 size={16}/>} color="hover:text-amber-600 dark:hover:text-amber-400" onClick={() => { setSelected(row); setShowForm(true); }} />
-                    <ActionButton icon={<Trash2 size={16}/>} color="hover:text-rose-600 dark:hover:text-rose-400" onClick={() => handleDelete(row.id)} />
+                    <button onClick={() => { setSelectedItem(row); setShowView(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={16} /></button>
+                    <button onClick={() => { setSelectedItem(row); setShowForm(true); }} className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16} /></button>
                 </div>
             )
         }
     ];
 
-    const handleDelete = async (id) => {
-        if(window.confirm("Confirm decommissioning?")) {
-            await clientService.delete(id);
-            fetchData();
-        }
-    };
+    const filteredList = useMemo(() => {
+        return clients.filter(item => {
+            const matchesSearch = item.name?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const filtered = useMemo(() => clients.filter(c => c.name.toLowerCase().includes(filters.search.toLowerCase())), [clients, filters]);
+            if (isCarrierMode) {
+                // Only show Logistics/Carrier categories
+                const isCarrier = item.category_name?.toLowerCase().includes("logistics") ||
+                    item.category_name?.toLowerCase().includes("carrier");
+                return matchesSearch && isCarrier;
+            }
+
+            return matchesSearch;
+        });
+    }, [clients, searchQuery, isCarrierMode]);
 
     if (loading) return (
-        <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-slate-950 gap-4">
-            <Loader2 className="animate-spin text-[#004A7C] dark:text-blue-500" size={40} />
-            <p className="text-[10px] font-black uppercase tracking-widest text-[#004A7C] dark:text-blue-500">Syncing Network...</p>
+        <div className="h-screen flex flex-col items-center justify-center gap-4">
+            <Loader2 className="animate-spin text-blue-900" size={32} />
+            <p className="text-xs font-bold uppercase text-blue-900">Please wait...</p>
         </div>
     );
 
     return (
-        <div className="p-8 space-y-8 bg-white dark:bg-slate-950 min-h-screen transition-colors duration-300">
+        <div className="p-8 bg-slate-50 dark:bg-slate-950 min-h-screen">
             <Toaster />
 
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-4xl font-black text-[#004A7C] dark:text-white uppercase tracking-tighter">Shop Network</h1>
-                    <p className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Nodes: {clients.length}</p>
+                    <h1 className="text-2xl font-black text-blue-900 dark:text-white uppercase">{pageTitle}</h1>
+                    <p className="text-slate-400 text-xs font-bold uppercase">Total: {filteredList.length}</p>
                 </div>
-                <div className="flex items-center gap-4">
-                    <button onClick={() => { setSelected(null); setShowForm(true); }} className="bg-[#004A7C] dark:bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black dark:hover:bg-blue-500 transition-all shadow-lg flex items-center gap-2">
-                        <Plus size={18}/> New Deployment
-                    </button>
-                </div>
+                <button
+                    onClick={() => { setSelectedItem(null); setShowForm(true); }}
+                    className="bg-blue-900 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase shadow-lg hover:bg-black transition-all flex items-center gap-2"
+                >
+                    <Plus size={18}/> {addButtonLabel}
+                </button>
             </div>
 
-            {/* SEARCH AREA - Using soft borders and light shadow to separate from white background */}
-            <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#004A7C] dark:group-focus-within:text-blue-400 transition-colors" size={18} />
+            <div className="relative mb-6">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
-                    className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm outline-none font-bold text-sm focus:ring-2 focus:ring-[#004A7C]/20 dark:focus:ring-blue-500/20 transition-all"
-                    placeholder="Filter environments..."
-                    onChange={(e) => setFilters({...filters, search: e.target.value})}
+                    className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm outline-none font-bold text-xs uppercase"
+                    placeholder={`Search ${itemLabel.toLowerCase()}s...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
 
-            {/* DATA TABLE CONTAINER - Added more defined shadow for white-on-white separation */}
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800">
-                <DataTable columns={columns} data={filtered} />
+            <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-sm">
+                <DataTable columns={columns} data={filteredList} itemsPerPage={10} />
             </div>
 
-            {showView && <ShopViewModal client={selected} onClose={() => setShowView(false)} onEdit={() => { setShowView(false); setShowForm(true); }} />}
+            {showView && <ShopViewModal client={selectedItem} onClose={() => setShowView(false)} onEdit={() => { setShowView(false); setShowForm(true); }} />}
 
             {showForm && (
                 <ShopFormModal
-                    selected={selected}
-                    availableDirectors={availableDirectors}
+                    selected={selectedItem}
+                    availableDirectors={availableUsers}
                     categories={categories}
                     onClose={() => setShowForm(false)}
                     onSave={handleSave}
@@ -156,14 +195,5 @@ const ClientDirectory = () => {
         </div>
     );
 };
-
-const ActionButton = ({ icon, color, onClick }) => (
-    <button
-        onClick={onClick}
-        className={`p-2.5 bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 ${color} rounded-xl transition-all shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md`}
-    >
-        {icon}
-    </button>
-);
 
 export default ClientDirectory;

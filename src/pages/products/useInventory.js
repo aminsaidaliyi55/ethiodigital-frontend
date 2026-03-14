@@ -1,190 +1,201 @@
-"use client";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
-
 import {
-    getProducts,
-    createProduct,
-    updateProduct,
-    deleteProduct as deleteProductService,
-    getShops,
-    getCategories,
-} from "@/services/inventoryService";
+    getProducts, getCategories, getShops,
+    createProduct, updateProduct, deleteProduct,
+    createOrder
+} from "./ProductService";
 
 export const useInventory = () => {
-    /* ---------- State ---------- */
-    const [allProducts, setAllProducts] = useState([]);
-    const [shops, setShops] = useState([]);
+    const [data, setData] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [shops, setShops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [search, setSearch] = useState("");
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 8;
+    const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
 
-    const [modal, setModal] = useState({
-        isOpen: false,
-        type: null, // "view" | "edit" | "create"
-        data: null,
-    });
-
-    const initialFormState = {
-        shop_id: "",
-        category_id: "",
+    const initialFormValues = {
         name: "",
-        sku: "",
-        image: "",
-        stock_quantity: 0,
+        slug: "",
+        buying_price: 0,
         selling_price: 0,
-        price: 0,
+        stock_quantity: 0,
+        category_id: "",
+        shop_id: "",
+        image: null,
         description: "",
+        size: "",
+        color_name: "",
+        order_qty: 1
     };
-    const [formValues, setFormValues] = useState(initialFormState);
 
-    /* ---------- Data loading ---------- */
+    const [formValues, setFormValues] = useState(initialFormValues);
+
+    const generateUniqueCode = () => {
+        const prefix = "TRX";
+        const randomDigits = Math.floor(100000000000 + Math.random() * 900000000000);
+        return `${prefix}-${randomDigits}`;
+    };
+
+    const extractArray = (res) => {
+        if (!res) return [];
+        if (Array.isArray(res)) return res;
+        if (res.data && Array.isArray(res.data)) return res.data;
+        return [];
+    };
+
+    const enrichProduct = useCallback((product, currentShops, currentCategories) => {
+        if (!product) return null;
+        const matchedShop = currentShops.find(s => String(s.id) === String(product.shop_id));
+        const matchedCat = currentCategories.find(c => String(c.id) === String(product.category_id));
+
+        return {
+            ...product,
+            category_name: matchedCat?.name || "General Asset",
+            shop_name: matchedShop?.name || "Unassigned Store"
+        };
+    }, []);
+
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [p, s, c] = await Promise.all([
+            const [p, c, s] = await Promise.all([
                 getProducts(),
-                getShops(),
                 getCategories(),
+                getShops()
             ]);
 
-            const mappedProducts = Array.isArray(p)
-                ? p.map((item) => ({
-                    ...item,
-                    id: item.id ?? item.Id,
-                    name: item.name ?? item.Name ?? "Unnamed Product",
-                    sku: item.sku ?? item.Sku ?? "---",
-                    category_id: item.category_id ?? item.Category_id,
-                    shop_id: item.shop_id ?? item.Shop_id,
-                    stock_quantity: Number(
-                        item.stock_quantity ?? item.Stock_quantity ?? 0
-                    ),
-                    selling_price: Number(
-                        item.selling_price ?? item.Selling_price ?? 0
-                    ),
-                    price: Number(item.price ?? item.Price ?? 0),
-                    description: item.description ?? item.Description ?? "",
-                }))
-                : [];
+            const fetchedProducts = extractArray(p);
+            const fetchedCategories = extractArray(c);
+            const fetchedShops = extractArray(s);
 
-            setAllProducts(mappedProducts);
-            setShops(Array.isArray(s) ? s : []);
-            setCategories(Array.isArray(c) ? c : []);
+            const enrichedProducts = fetchedProducts.map(prod =>
+                enrichProduct(prod, fetchedShops, fetchedCategories)
+            );
+
+            setData(enrichedProducts);
+            setCategories(fetchedCategories);
+            setShops(fetchedShops);
         } catch (err) {
-            console.error(err);
-            toast.error("Registry Sync Failed");
+            toast.error("Failed to sync Registry data");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [enrichProduct]);
 
     useEffect(() => {
-        void loadData();
+        loadData();
     }, [loadData]);
 
-    /* ---------- Sync form when modal opens (edit / view) ---------- */
-    useEffect(() => {
-        if (modal.data && (modal.type === "edit" || modal.type === "view")) {
-            const d = modal.data;
-            setFormValues({
-                shop_id: d.shop_id ?? "",
-                category_id: d.category_id ?? "",
-                name: d.name ?? "",
-                sku: d.sku ?? "",
-                image: d.image ?? "",
-                stock_quantity: d.stock_quantity ?? 0,
-                selling_price: d.selling_price ?? 0,
-                price: d.price ?? 0,
-                description: d.description ?? "",
-            });
-        } else {
-            setFormValues(initialFormState);
+    const calculateGrandTotal = () => {
+        if (formValues?.is_batch) {
+            return formValues.items.reduce((sum, item) => sum + (Number(item.order_qty) * Number(item.selling_price)), 0);
         }
-    }, [modal]);
-
-    /* ---------- Filtering & Pagination ---------- */
-    const filteredProducts = useMemo(() => {
-        const term = search.toLowerCase();
-        return allProducts.filter(
-            (p) =>
-                p.name?.toLowerCase().includes(term) ||
-                p.sku?.toLowerCase().includes(term)
-        );
-    }, [allProducts, search]);
-
-    const totalCount = filteredProducts.length;
-    const totalPages = Math.ceil(totalCount / itemsPerPage) || 1;
-
-    const paginatedProducts = filteredProducts.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
-
-    /* ---------- CRUD actions ---------- */
-    const handleDelete = async (id) => {
-        const toastId = toast.loading("Purging record...");
-        try {
-            await deleteProductService(id);
-            toast.success("Record deleted", { id: toastId });
-            await loadData();
-        } catch (err) {
-            toast.error(err?.response?.data?.message ?? "Delete failed", {
-                id: toastId,
-            });
-        }
+        return Number(formValues?.order_qty || 1) * Number(formValues?.selling_price || 0);
     };
 
-    const handleAction = async (e) => {
-        e?.preventDefault();
+    const handleAction = async () => {
         setSubmitting(true);
-        const toastId = toast.loading("Processing...");
-
         try {
-            const productId = modal.data?.id ?? modal.data?.Id;
+            if (modal.type === "delete") {
+                await deleteProduct(modal.data.id);
+                toast.success("Asset purged from registry");
+            }
+            else if (modal.type === "order") {
+                const transactionCode = generateUniqueCode();
 
-            if (modal.type === "edit" && productId) {
-                await updateProduct(productId, formValues);
-            } else {
-                await createProduct(formValues);
+                const orderPayload = {
+                    total_amount: calculateGrandTotal(),
+                    payment_method: "CASH / TRANSFER",
+                    transaction_id: transactionCode,
+                    items: formValues.is_batch
+                        ? formValues.items.map(item => ({
+                            id: item.id,
+                            shop_id: item.shop_id,
+                            order_qty: item.order_qty,
+                            selling_price: item.selling_price,
+                            unique_ref: transactionCode
+                        }))
+                        : [{
+                            id: formValues.id,
+                            shop_id: formValues.shop_id,
+                            order_qty: formValues.order_qty,
+                            selling_price: formValues.selling_price,
+                            unique_ref: transactionCode
+                        }]
+                };
+
+                await createOrder(orderPayload);
+
+                // Using plain text to avoid Vite parsing errors in .js files
+                toast.success(`Order Confirmed! Ref: ${transactionCode}`, {
+                    duration: 600000,
+                    icon: '🎉',
+                });
+            }
+            else if (modal.type === "create" || modal.type === "edit") {
+                const formData = new FormData();
+                Object.keys(formValues).forEach(key => {
+                    if (key === 'image' && formValues[key] instanceof File) {
+                        formData.append('image', formValues[key]);
+                    } else if (formValues[key] !== null && formValues[key] !== undefined) {
+                        formData.append(key, formValues[key]);
+                    }
+                });
+
+                if (modal.type === "create") {
+                    await createProduct(formData);
+                    toast.success("Registry successfully updated");
+                } else {
+                    await updateProduct(modal.data.id, formData);
+                    toast.success("Asset details updated");
+                }
             }
 
-            toast.success("Registry Updated", { id: toastId });
             setModal({ isOpen: false, type: null, data: null });
             await loadData();
         } catch (err) {
-            toast.error("Process failed", { id: toastId });
+            const errorMsg = err.response?.data?.detail || err.response?.data?.error || "Operation failed";
+            toast.error(errorMsg);
         } finally {
             setSubmitting(false);
         }
     };
 
+    const openModal = (type, item = null) => {
+        if (item) {
+            if (item.is_batch) {
+                setFormValues({
+                    ...item,
+                    items: item.items.map(i => ({ ...i, order_qty: i.order_qty || 1 }))
+                });
+            } else {
+                setFormValues({
+                    id: item.id,
+                    name: item.name || "",
+                    slug: item.slug || "",
+                    buying_price: item.buying_price || 0,
+                    selling_price: item.selling_price || 0,
+                    stock_quantity: item.stock_quantity || 0,
+                    category_id: item.category_id || "",
+                    shop_id: item.shop_id || "",
+                    image: item.image || null,
+                    description: item.description || "",
+                    size: item.size || "",
+                    color_name: item.color_name || "",
+                    order_qty: item.order_qty || 1,
+                });
+            }
+            setModal({ isOpen: true, type, data: item });
+        } else {
+            setFormValues(initialFormValues);
+            setModal({ isOpen: true, type, data: null });
+        }
+    };
+
     return {
-        // Data
-        products: paginatedProducts,
-        totalCount,
-        shops,
-        categories,
-        loading,
-        submitting,
-
-        // UI state
-        modal,
-        setModal,
-        formValues,
-        setFormValues,
-        search,
-        setSearch,
-        currentPage,
-        setCurrentPage,
-        totalPages,
-
-        // Handlers
-        handleAction,
-        handleDelete,
-        loadData,
-        initialFormState,
+        data, categories, shops, loading, submitting,
+        modal, setModal, formValues, setFormValues,
+        handleAction, openModal, loadData, calculateGrandTotal
     };
 };

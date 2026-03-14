@@ -9,7 +9,6 @@ export const useUsers = () => {
     const [modalState, setModalState] = useState(null);
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
-
     const initialFormState = { id: "", name: "", email: "", phone_number: "", password: "", roles: [], is_active: true };
     const [form, setForm] = useState(initialFormState);
 

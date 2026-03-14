@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@layer base {
+    :root {
+        --background: #f8fafc;
+        --foreground: #0f172a;
+        color-scheme: light;
+    }
+    :root.dark {
+        --background: #020617;
+        --foreground: #f1f5f9;
+        color-scheme: dark;
+    }
+    body {
+        background-color: var(--background);
+        color: var(--foreground);
+        @apply transition-colors duration-300;
+    }
+}
+
+@variant dark (&:where(.dark, .dark *));
+
+/* HIGH-PRECISION PRINTING ENGINE */
+@media print {
+    @page {
+        margin: 10mm;
+        size: A4;
+    }
+
+    /* CRITICAL: Wipe the slate clean */
+    body > * {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* RE-ENABLE ONLY THE PORTAL */
+    #print-portal, #print-portal * {
+        display: block !important;
+        visibility: visible !important;
+    }
+
+    #print-portal {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: white !important;
+        color: black !important;
+        z-index: 9999;
+    }
+
+    /* UI elements that should never print */
+    .no-print {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Table Logic for splitting pages correctly */
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+
+    .page-break-avoid {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+}
